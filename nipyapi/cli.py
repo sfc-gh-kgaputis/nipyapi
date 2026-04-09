@@ -47,10 +47,11 @@ Configuration:
 Output Formatting:
     Complex objects are serialized to JSON by default. Override with:
     NIFI_OUTPUT_FORMAT=github   GitHub Actions format (key=value, heredoc for complex)
-    NIFI_OUTPUT_FORMAT=dotenv   GitLab CI format (KEY=VALUE)
+    NIFI_OUTPUT_FORMAT=dotenv   GitLab CI / Azure DevOps Pipelines format (KEY=VALUE)
     NIFI_OUTPUT_FORMAT=json     JSON format (default)
 
-    CI environments are auto-detected via GITHUB_ACTIONS or GITLAB_CI env vars.
+    CI environments are auto-detected via GITHUB_ACTIONS, GITLAB_CI, or
+    SYSTEM_TEAMFOUNDATIONCOLLECTIONURI (Azure DevOps Pipelines) env vars.
 
 Log Level Control:
     NIFI_LOG_LEVEL=WARNING      Default - only warnings and errors in output
@@ -73,7 +74,7 @@ def _detect_output_format():
 
     Priority:
     1. Explicit NIFI_OUTPUT_FORMAT env var
-    2. Auto-detect CI environment (GITHUB_ACTIONS, GITLAB_CI)
+    2. Auto-detect CI environment (GITHUB_ACTIONS, GITLAB_CI, SYSTEM_TEAMFOUNDATIONCOLLECTIONURI)
     3. Default to 'json' for structured output
     """
     explicit = os.environ.get("NIFI_OUTPUT_FORMAT")
@@ -84,6 +85,9 @@ def _detect_output_format():
     if os.environ.get("GITHUB_ACTIONS"):
         return "github"
     if os.environ.get("GITLAB_CI"):
+        return "dotenv"
+    if os.environ.get("SYSTEM_TEAMFOUNDATIONCOLLECTIONURI"):
+        # Azure DevOps Pipelines: use dotenv format (compatible with pipeline variable files)
         return "dotenv"
 
     # Default to JSON for complex objects

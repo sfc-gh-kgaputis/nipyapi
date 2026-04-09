@@ -29,9 +29,12 @@ def change_flow_version(  # pylint: disable=too-many-arguments,too-many-position
         target_version: Version to change to (commit SHA, tag, or branch name).
                        Env: NIFI_TARGET_VERSION. If None, changes to latest.
         branch: Branch to use. Env: NIFI_FLOW_BRANCH
-        token: Git token for resolving tags. Env: GH_REGISTRY_TOKEN or GL_REGISTRY_TOKEN
-        repo: Repository in owner/repo format. Env: NIFI_REGISTRY_REPO
-        provider: Git provider (github/gitlab). Env: NIFI_REGISTRY_PROVIDER
+        token: Git token for resolving tags. Env: GH_REGISTRY_TOKEN, GL_REGISTRY_TOKEN,
+            or ADO_REGISTRY_TOKEN (PAT for ADO).
+        repo: Repository in owner/repo format. Env: NIFI_REGISTRY_REPO.
+            For ADO, also set NIFI_REGISTRY_PROJECT so the 3-part
+            ``org/project/repo`` path can be built for tag/branch resolution.
+        provider: Git provider (github/gitlab/ado). Env: NIFI_REGISTRY_PROVIDER
 
     Returns:
         dict with previous_version, new_version, version_state
@@ -39,6 +42,7 @@ def change_flow_version(  # pylint: disable=too-many-arguments,too-many-position
     Raises:
         ValueError: Missing required parameters or not under version control
     """
+    # pylint: disable=too-many-locals
     process_group_id = process_group_id or os.environ.get("NIFI_PROCESS_GROUP_ID")
     target_version = target_version or os.environ.get("NIFI_TARGET_VERSION") or None
     branch = branch or os.environ.get("NIFI_FLOW_BRANCH") or None
@@ -49,6 +53,8 @@ def change_flow_version(  # pylint: disable=too-many-arguments,too-many-position
     if not token:
         if provider == "gitlab":
             token = os.environ.get("GL_REGISTRY_TOKEN")
+        elif provider == "ado":
+            token = os.environ.get("ADO_REGISTRY_TOKEN")
         else:
             token = os.environ.get("GH_REGISTRY_TOKEN")
 
@@ -74,8 +80,17 @@ def change_flow_version(  # pylint: disable=too-many-arguments,too-many-position
 
     log.debug("Current version: %s (%s)", previous_version, current_vci.state)
 
-    # Resolve target version (tag/branch) to SHA if needed
-    resolved_version = resolve_git_ref(target_version, repo, token, provider)
+    # Resolve target version (tag/branch) to SHA if needed.
+    # For ADO, resolve_git_ref needs org/project/repo (3 parts);
+    # build it from NIFI_REGISTRY_PROJECT.
+    resolve_repo = repo
+    if provider == "ado" and repo and "/" in repo:
+        ado_project = os.environ.get("NIFI_REGISTRY_PROJECT")
+        if ado_project:
+            ado_org = repo.split("/")[0]
+            ado_repo_name = repo.split("/", 1)[1]
+            resolve_repo = f"{ado_org}/{ado_project}/{ado_repo_name}"
+    resolved_version = resolve_git_ref(target_version, resolve_repo, token, provider)
 
     if resolved_version:
         log.info("Target version: %s (resolved to %s)", target_version, resolved_version[:12])

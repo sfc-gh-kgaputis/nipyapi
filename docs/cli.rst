@@ -265,6 +265,16 @@ The CLI automatically formats output based on the execution environment:
         nipyapi ci deploy_flow ... > deploy.env
         # Output: PROCESS_GROUP_ID=abc-123
 
+**Azure DevOps Pipelines (dotenv)**
+    Auto-detected when ``SYSTEM_TEAMFOUNDATIONCOLLECTIONURI`` env var is set.
+    Outputs ``KEY=VALUE`` pairs (same dotenv format as GitLab CI).
+
+    .. code-block:: console
+
+        # In Azure DevOps pipeline step
+        nipyapi ci deploy_flow ... > deploy.env
+        # Output: PROCESS_GROUP_ID=abc-123
+
 **Manual Override**
     Force a specific format using ``NIFI_OUTPUT_FORMAT``:
 
@@ -272,7 +282,7 @@ The CLI automatically formats output based on the execution environment:
 
         export NIFI_OUTPUT_FORMAT=json    # JSON (default)
         export NIFI_OUTPUT_FORMAT=github  # GitHub Actions format
-        export NIFI_OUTPUT_FORMAT=dotenv  # GitLab dotenv format
+        export NIFI_OUTPUT_FORMAT=dotenv  # GitLab / Azure DevOps format
 
 Log Level Control
 =================

@@ -2,6 +2,30 @@
 History
 =======
 
+Unreleased
+----------
+
+| Azure DevOps (ADO) Flow Registry support
+
+**CI Operations Module**
+
+- **Azure DevOps provider** (``provider="ado"``): ``ensure_registry`` now supports
+  ``AzureDevOpsFlowRegistryClient``, authenticating via a pre-configured
+  ``StandardOauth2AccessTokenProvider`` controller service (Service Principal / OAuth2 flow).
+  No PAT is needed for registry setup. New parameters: ``--project``,
+  ``--oauth2_provider_id``, ``--web_client_id``. New env vars: ``NIFI_REGISTRY_PROJECT``,
+  ``NIFI_ADO_OAUTH2_PROVIDER_ID``, ``NIFI_ADO_WEB_CLIENT_ID``.
+- **ADO tag/branch resolution** (``resolve_git_ref``): Added Azure DevOps REST API support.
+  When ``provider="ado"``, ``repo`` must be in ``org/project/repo`` format (3 parts).
+  Uses PAT Basic-auth (``ADO_REGISTRY_TOKEN``). Tries ``refs/tags/`` then ``refs/heads/``
+  automatically. ``change_flow_version`` builds the 3-part path automatically from
+  ``NIFI_REGISTRY_PROJECT``.
+- **ADO token selection** (``change_flow_version``): Reads ``ADO_REGISTRY_TOKEN`` when
+  ``provider="ado"`` (previously only GitHub/GitLab tokens were checked).
+- **Azure DevOps Pipelines auto-detection** (``cli.py``): Auto-detects
+  ``SYSTEM_TEAMFOUNDATIONCOLLECTIONURI`` env var and outputs ``dotenv`` format, consistent
+  with GitLab CI behaviour.
+
 1.5.0 (2026-01-25)
 -------------------
 

@@ -74,7 +74,7 @@ Available Operations
 ensure_registry
 ---------------
 
-Create or update a Git Flow Registry Client (GitHub or GitLab).
+Create or update a Git Flow Registry Client (GitHub, GitLab, or Azure DevOps).
 
 .. code-block:: console
 
@@ -90,13 +90,16 @@ Create or update a Git Flow Registry Client (GitHub or GitLab).
 =============================  ============================================  ================================
 Parameter                      Description                                   Environment Variable
 =============================  ============================================  ================================
-``--token``                    Personal Access Token                         ``GH_REGISTRY_TOKEN`` or ``GL_REGISTRY_TOKEN``
+``--token``                    Personal Access Token (GitHub/GitLab only)    ``GH_REGISTRY_TOKEN`` or ``GL_REGISTRY_TOKEN``
 ``--repo``                     Repository in owner/repo format               ``NIFI_REGISTRY_REPO``
 ``--client_name``              Registry client name                          ``NIFI_REGISTRY_CLIENT_NAME``
-``--provider``                 Git provider (github/gitlab)                  ``NIFI_REGISTRY_PROVIDER``
+``--provider``                 Git provider (github/gitlab/ado)              ``NIFI_REGISTRY_PROVIDER``
 ``--api_url``                  API URL override                              ``NIFI_REGISTRY_API_URL``
 ``--default_branch``           Default branch (default: main)                ``NIFI_REGISTRY_BRANCH``
 ``--repository_path``          Path within repository                        ``NIFI_REPOSITORY_PATH``
+``--project``                  Azure DevOps project name (ado only)          ``NIFI_REGISTRY_PROJECT``
+``--oauth2_provider_id``       OAuth2 controller service ID (ado only)       ``NIFI_ADO_OAUTH2_PROVIDER_ID``
+``--web_client_id``            Web client controller service ID (ado only)   ``NIFI_ADO_WEB_CLIENT_ID``
 =============================  ============================================  ================================
 
 **Returns:** ``registry_client_id``, ``registry_client_name``
@@ -291,9 +294,9 @@ Parameter                      Description                                   Env
 ``--process_group_id``         ID of the process group                       ``NIFI_PROCESS_GROUP_ID``
 ``--target_version``           Version (commit SHA, tag, branch)             ``NIFI_TARGET_VERSION``
 ``--branch``                   Branch to use                                 ``NIFI_FLOW_BRANCH``
-``--token``                    Git token for resolving tags                  ``GH_REGISTRY_TOKEN`` or ``GL_REGISTRY_TOKEN``
+``--token``                    Git token for resolving tags                  ``GH_REGISTRY_TOKEN``, ``GL_REGISTRY_TOKEN``, or ``ADO_REGISTRY_TOKEN``
 ``--repo``                     Repository in owner/repo format               ``NIFI_REGISTRY_REPO``
-``--provider``                 Git provider (github/gitlab)                  ``NIFI_REGISTRY_PROVIDER``
+``--provider``                 Git provider (github/gitlab/ado)              ``NIFI_REGISTRY_PROVIDER``
 =============================  ============================================  ================================
 
 **Returns:** ``previous_version``, ``new_version``, ``version_state``
@@ -548,8 +551,8 @@ Parameter           Description                                       Environmen
 ==================  ================================================  ========================================
 ``--ref``           Tag name, branch name, or commit SHA              (none)
 ``--repo``          Repository in owner/repo format                   ``NIFI_REGISTRY_REPO``
-``--token``         Personal access token for API access              ``GH_REGISTRY_TOKEN`` / ``GL_REGISTRY_TOKEN``
-``--provider``      Git provider: github/gitlab (default: github)     ``NIFI_REGISTRY_PROVIDER``
+``--token``         Personal access token for API access              ``GH_REGISTRY_TOKEN`` / ``GL_REGISTRY_TOKEN`` / ``ADO_REGISTRY_TOKEN``
+``--provider``      Git provider: github/gitlab/ado (default: github)  ``NIFI_REGISTRY_PROVIDER``
 ==================  ================================================  ========================================
 
 **Returns:** The resolved commit SHA, or None if ref was empty.
@@ -559,6 +562,7 @@ Parameter           Description                                       Environmen
 - If the ref already looks like a SHA (7-40 hex characters), it's returned as-is without an API call
 - Useful for CI/CD pipelines that need to pin to exact commits
 - Called automatically by ``change_flow_version`` when you pass a tag or branch name
+- For ADO provider, ``--repo`` must be in ``org/project/repo`` format (3 parts) to build the Azure DevOps API URL. Set ``NIFI_REGISTRY_PROJECT`` so ``change_flow_version`` can construct this automatically.
 
 Environment Variable Reference
 ==============================
@@ -584,13 +588,17 @@ Variable                       Description
 =============================  ============================================
 ``GH_REGISTRY_TOKEN``          GitHub Personal Access Token
 ``GL_REGISTRY_TOKEN``          GitLab Personal Access Token
+``ADO_REGISTRY_TOKEN``         Azure DevOps PAT (for tag/branch resolution)
 ``NIFI_REGISTRY_REPO``         Repository in owner/repo format
 ``NIFI_REGISTRY_CLIENT_ID``    Registry client ID
 ``NIFI_REGISTRY_CLIENT_NAME``  Registry client name
-``NIFI_REGISTRY_PROVIDER``     Git provider (github/gitlab)
+``NIFI_REGISTRY_PROVIDER``     Git provider (github/gitlab/ado)
 ``NIFI_REGISTRY_API_URL``      API URL override
 ``NIFI_REGISTRY_BRANCH``       Default branch
 ``NIFI_REPOSITORY_PATH``       Path within repository
+``NIFI_REGISTRY_PROJECT``      Azure DevOps project name (ado only)
+``NIFI_ADO_OAUTH2_PROVIDER_ID`` ID of pre-configured OAuth2 controller service (ado only)
+``NIFI_ADO_WEB_CLIENT_ID``     ID of pre-configured Web Client controller service (ado only)
 =============================  ============================================
 
 Flow Operations
@@ -710,6 +718,38 @@ For GitLab CI, include the fragments template:
         - !reference [.nipyapi, deploy-flow]
         - !reference [.nipyapi, start-flow]
 
+Azure DevOps Pipelines
+----------------------
+
+Auto-detected when ``SYSTEM_TEAMFOUNDATIONCOLLECTIONURI`` is set (standard in all ADO pipeline
+agents). Outputs ``dotenv`` format (``KEY=VALUE`` pairs) compatible with pipeline variable files.
+
+The ADO provider uses ``AzureDevOpsFlowRegistryClient``, which authenticates via a pre-configured
+``StandardOauth2AccessTokenProvider`` controller service — no PAT is needed for registry setup.
+A PAT (``ADO_REGISTRY_TOKEN``) is only required if you call ``resolve_git_ref`` or
+``change_flow_version`` with a tag/branch name instead of a full commit SHA.
+
+.. code-block:: yaml
+
+    variables:
+      NIFI_API_ENDPOINT: "https://nifi.example.com/nifi-api"
+      NIFI_REGISTRY_PROVIDER: "ado"
+      NIFI_REGISTRY_REPO: "myorg/myrepo"
+      NIFI_REGISTRY_PROJECT: "MyProject"
+      NIFI_ADO_OAUTH2_PROVIDER_ID: "$(oauth2-service-id)"
+      NIFI_BUCKET: "connectors"
+      NIFI_FLOW: "postgresql"
+
+    steps:
+      - script: |
+          pip install "nipyapi[cli]"
+          nipyapi ci ensure_registry
+          nipyapi ci deploy_flow
+          nipyapi ci start_flow
+        displayName: Deploy NiFi Flow
+        env:
+          NIFI_BEARER_TOKEN: $(nifi-token)
+
 Python Usage
 ============
 
@@ -757,4 +797,4 @@ Cross-References
 
 **For version control details:** See :doc:`nipyapi-docs/core_modules/versioning`
 
-**For GitHub Actions:** See `nipyapi-actions <https://github.com/Chaffelson/nipyapi-actions>`_
+**For GitHub Actions / GitLab CI / Azure DevOps:** See `nipyapi-actions <https://github.com/Chaffelson/nipyapi-actions>`_

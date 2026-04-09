@@ -134,6 +134,73 @@ class TestEnsureRegistryValidation:
             else:
                 os.environ.pop("GL_REGISTRY_TOKEN", None)
 
+    def test_ado_missing_project(self):
+        """Test ADO provider raises ValueError when project is missing."""
+        with pytest.raises(ValueError, match="project is required"):
+            ci.ensure_registry(
+                provider="ado",
+                repo="myorg/myrepo",
+                oauth2_provider_id="svc-id-123",
+            )
+
+    def test_ado_missing_oauth2_provider_id(self):
+        """Test ADO provider raises ValueError when oauth2_provider_id is missing."""
+        with pytest.raises(ValueError, match="oauth2_provider_id is required"):
+            ci.ensure_registry(
+                provider="ado",
+                repo="myorg/myrepo",
+                project="MyProject",
+            )
+
+    def test_ado_token_not_required(self):
+        """Test ADO provider does not raise when no token env vars are set."""
+        old_gh = os.environ.pop("GH_REGISTRY_TOKEN", None)
+        old_gl = os.environ.pop("GL_REGISTRY_TOKEN", None)
+        old_ado = os.environ.pop("ADO_REGISTRY_TOKEN", None)
+        try:
+            # Should raise for missing project, NOT for missing token
+            with pytest.raises(ValueError, match="project is required"):
+                ci.ensure_registry(
+                    provider="ado",
+                    repo="myorg/myrepo",
+                    oauth2_provider_id="svc-id-123",
+                )
+        finally:
+            if old_gh:
+                os.environ["GH_REGISTRY_TOKEN"] = old_gh
+            if old_gl:
+                os.environ["GL_REGISTRY_TOKEN"] = old_gl
+            if old_ado:
+                os.environ["ADO_REGISTRY_TOKEN"] = old_ado
+
+    @patch("nipyapi.versioning.ensure_registry_client")
+    def test_ado_uses_correct_properties(self, mock_ensure):
+        """Test ADO provider sends correct property names to ensure_registry_client."""
+        mock_client = MagicMock()
+        mock_client.id = "ado-client-id"
+        mock_client.component.name = "AzureDevOps-FlowRegistry"
+        mock_ensure.return_value = mock_client
+
+        ci.ensure_registry(
+            provider="ado",
+            repo="myorg/myrepo",
+            project="MyProject",
+            oauth2_provider_id="oauth2-svc-id",
+            web_client_id="webclient-svc-id",
+        )
+
+        call_kwargs = mock_ensure.call_args[1]
+        props = call_kwargs["properties"]
+        assert props["Organization"] == "myorg"
+        assert props["Project"] == "MyProject"
+        assert props["Repository Name"] == "myrepo"
+        assert props["Authentication Strategy"] == "SERVICE_PRINCIPAL"
+        assert props["OAuth2 Access Token Provider"] == "oauth2-svc-id"
+        assert props["Web Client Service"] == "webclient-svc-id"
+        assert call_kwargs["reg_type"] == (
+            "org.apache.nifi.azure.devops.AzureDevOpsFlowRegistryClient"
+        )
+
 
 class TestDeployFlowValidation:
     """Test deploy_flow validation logic (no NiFi required)."""
